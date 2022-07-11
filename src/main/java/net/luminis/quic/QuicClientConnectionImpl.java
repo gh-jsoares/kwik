@@ -191,6 +191,9 @@ public class QuicClientConnectionImpl extends QuicConnectionImpl implements Quic
      */
     @Override
     public synchronized List<QuicStream> connect(int connectionTimeout, String applicationProtocol, TransportParameters transportParameters, List<StreamEarlyData> earlyData) throws IOException {
+        if (applicationProtocol.trim().isEmpty()) {
+            throw new IllegalArgumentException("ALPN cannot be empty");
+        }
         if (connectionState != Status.Created) {
             throw new IllegalStateException("Cannot connect a connection that is in state " + connectionState);
         }
@@ -565,11 +568,6 @@ public class QuicClientConnectionImpl extends QuicConnectionImpl implements Quic
     }
 
     @Override
-    public void process(QuicFrame frame, QuicPacket packet, Instant timeReceived) {
-        log.warn("Unhandled frame type: " + frame);
-    }
-
-    @Override
     protected void immediateCloseWithError(EncryptionLevel level, int error, String errorReason) {
         if (keepAliveActor != null) {
             keepAliveActor.shutdown();
@@ -910,7 +908,7 @@ public class QuicClientConnectionImpl extends QuicConnectionImpl implements Quic
         return connectionState == Status.Connected;
     }
 
-    public void trustAll() {
+    protected void trustAnyServerCertificate() {
         X509TrustManager trustAllCerts =
             new X509TrustManager() {
                 @Override
@@ -927,6 +925,7 @@ public class QuicClientConnectionImpl extends QuicConnectionImpl implements Quic
                 }
         };
         tlsEngine.setTrustManager(trustAllCerts);
+        tlsEngine.setHostnameVerifier((hostname, serverCertificate) -> true);
     }
 
     private void enableQuantumReadinessTest(int nrDummyBytes) {
@@ -1005,7 +1004,7 @@ public class QuicClientConnectionImpl extends QuicConnectionImpl implements Quic
                             initialRtt, connectionIdLength, cipherSuites, clientCertificate, clientCertificateKey);
 
             if (omitCertificateCheck) {
-                quicConnection.trustAll();
+                quicConnection.trustAnyServerCertificate();
             }
             if (quantumReadinessTest != null) {
                 quicConnection.enableQuantumReadinessTest(quantumReadinessTest);
